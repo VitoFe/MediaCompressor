@@ -8,12 +8,14 @@ display_help() {
     echo "Options:"
     echo "  -h, --help      Show this help message and exit"
     echo "  -q, --quality   Set the quality value for compression (default: 75)"
+    echo "  -s, --scale     Scale by a certain ratio (default: 1)"
     echo
 }
 
 # Default options
 quality=75
 max_processes=4
+scale_ratio=1
 
 # Parse the command-line options using getopts
 while getopts ":hq:-:" opt; do
@@ -28,6 +30,9 @@ while getopts ":hq:-:" opt; do
         p) # Set the max number of processes to spawn
             max_processes="$OPTARG"
             ;;
+        s) # Set the quality 0-100
+            scale_ratio="$OPTARG"
+            ;;
         -) # Handle long options
             case "$OPTARG" in
                 help)
@@ -39,6 +44,9 @@ while getopts ":hq:-:" opt; do
                     ;;
                 max_processes=*)
                     max_processes="${OPTARG#*=}"
+                    ;;
+                scale_ratio=*)
+                    scale_ratio="${OPTARG#*=}"
                     ;;
                 *) # Invalid option
                     echo "Error: Invalid option: --$OPTARG" >&2
@@ -85,12 +93,26 @@ function convert_files() {
             case "${item##*.}" in
                 jpg|jpeg|png|gif)
                     printf "Converting %s\n" "$item"
-                    convert -quality "$quality" "$item" "$output_folder/${item#$input_folder/}" &
+                    # Check if scale_ratio is set and lower than 1
+                    if [[ -n "$scale_ratio" && "$scale_ratio" < 1 ]]; then
+                        # Scale the image by the ratio
+                        convert -quality "$quality" -resize "$scale_ratio%" "$item" "$output_folder/${item#$input_folder/}" &
+                    else
+                        # Keep the original size
+                        convert -quality "$quality" "$item" "$output_folder/${item#$input_folder/}" &
+                    fi
                     ;;
                 mp4|avi|mov|mkv)
                     printf "Compressing %s\n" "$item"
                     crf=$((51 - quality / 2))
-                    ffmpeg -i "$item" -vcodec libx264 -crf "$crf" "$output_folder/${item#$input_folder/}" &
+                    # Check if scale_ratio is set and lower than 1
+                    if [[ -n "$scale_ratio" && "$scale_ratio" < 1 ]]; then
+                        # Scale the video by the ratio
+                        ffmpeg -i "$item" -vcodec libx264 -crf "$crf" -vf "scale=iw*$scale_ratio:ih*$scale_ratio" "$output_folder/${item#$input_folder/}" &
+                    else
+                        # Keep the original size
+                        ffmpeg -i "$item" -vcodec libx264 -crf "$crf" "$output_folder/${item#$input_folder/}" &
+                    fi
                     ;;
             esac
 
